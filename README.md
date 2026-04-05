@@ -83,10 +83,10 @@ If you have an Apple laptop or desktop with Apple Silicon, we've set up a simple
 
 If you don't have a Mac with Apple Silicon, you can run an adapted version of this script without MLX support. Just ask [Codex](https://openai.com/codex/) to refactor it; the change is straightforward. It may still be fairly slow, so we recommend jumping straight to cloud GPUs with Runpod.
 
-First, clone the repository and sync a `uv` environment with the packages needed for the MLX path plus dataset download:
+First, clone the repository and install the MLX path dependencies with `uv` from the root `pyproject.toml`.
 
 ```bash
-git clone https://github.com/openai/parameter-golf.git
+git clone https://github.com/ryanznie/parameter-golf.git
 cd parameter-golf
 uv sync --python "$(which python3)" --extra mlx
 ```
@@ -102,7 +102,7 @@ uv run data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
 This populates `./data/datasets/fineweb10B_sp1024/` and `./data/tokenizers/`.
 By default this downloads the full validation split plus 80 training shards (8B tokens). For a smaller local smoke subset, pass `--train-shards 1`, for example `uv run data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1`.
 
-Then run a small MLX training job:
+Then run a small MLX training job as a local smoke test:
 
 ```bash
 RUN_ID=mlx_smoke \
@@ -133,7 +133,7 @@ On your remote machine, clone the repo onto local disk and sync the CUDA trainin
 
 ```bash
 cd /workspace
-git clone https://github.com/openai/parameter-golf.git
+git clone https://github.com/ryanznie/parameter-golf.git
 cd parameter-golf
 uv sync --extra cuda
 ```
@@ -160,9 +160,9 @@ By default, `train_gpt.py` keeps its ~10 minute wallclock cap. If you want a lon
 
 By default, this command prints `train_loss` step logs during training and prints `val_loss`, `val_bpb`, and compressed model size in the final `final_int8_zlib_roundtrip` lines at the end. If you want periodic validation logs during the run, set `VAL_LOSS_EVERY`, for example `VAL_LOSS_EVERY=200`. For the baseline config, the final `val_bpb` should land around ~1.2 with a compressed model size under 16MB.
 
-For dataset export, tokenizer export, and docs-cache rebuild instructions, see [data/README.md](data/README.md).
+For dataset export, tokenizer export, and docs-cache rebuild instructions, see the [data setup guide](data/README.md).
 
-Evaluation will be in the RunPod environment with all packages installed. The root `pyproject.toml` is the canonical dependency definition if you want to self-setup with `uv`; use `uv sync --extra cuda` for the PyTorch path and `uv sync --extra mlx` on Apple Silicon.
+Evaluation will be in the RunPod environment with all packages installed. The root `pyproject.toml` covers local setup; use `uv sync --extra cuda` for the PyTorch path and `uv sync --extra mlx` on Apple Silicon.
 
 ## FAQ
 
