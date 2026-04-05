@@ -83,25 +83,24 @@ If you have an Apple laptop or desktop with Apple Silicon, we've set up a simple
 
 If you don't have a Mac with Apple Silicon, you can run an adapted version of this script without MLX support. Just ask [Codex](https://openai.com/codex/) to refactor it; the change is straightforward. It may still be fairly slow, so we recommend jumping straight to cloud GPUs with Runpod.
 
-First, clone the repository, create a fresh Python environment, and install the packages needed for the MLX path plus dataset download:
+First, clone the repository and sync a `uv` environment with the packages needed for the MLX path plus dataset download:
 
 ```bash
 git clone https://github.com/openai/parameter-golf.git
 cd parameter-golf
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install mlx numpy sentencepiece huggingface-hub datasets tqdm
+uv sync --python "$(which python3)" --extra mlx
 ```
+
+On Apple Silicon, this forces `uv` to build the environment with your local arm64 interpreter instead of a cached x86_64 Python.
 
 Download our cached version of FineWeb with the 1024-token vocabulary:
 
 ```bash
-python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+uv run data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
 ```
 
 This populates `./data/datasets/fineweb10B_sp1024/` and `./data/tokenizers/`.
-By default this downloads the full validation split plus 80 training shards (8B tokens). For a smaller local smoke subset, pass `--train-shards 1`, for example `python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1`.
+By default this downloads the full validation split plus 80 training shards (8B tokens). For a smaller local smoke subset, pass `--train-shards 1`, for example `uv run data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1`.
 
 Then run a small MLX training job:
 
@@ -111,7 +110,7 @@ ITERATIONS=200 \
 TRAIN_BATCH_TOKENS=8192 \
 VAL_LOSS_EVERY=0 \
 VAL_BATCH_SIZE=8192 \
-python3 train_gpt_mlx.py
+uv run train_gpt_mlx.py
 ```
 
 Validation always runs on the full `fineweb_val_*` split, which is the fixed first-50k-document set. The smoke command above skips periodic validation and just prints the final `val_loss` and `val_bpb` once at the end.
@@ -130,18 +129,19 @@ You can rent GPUs from anywhere, but OpenAI is partnering with Runpod to make se
 
 3. Let's start with a 1xH100 pod. Deploy using the official Parameter Golf template: [Launch Template](https://console.runpod.io/deploy?template=y5cejece4j&ref=nl2r56th). Enable SSH terminal access, leaving the other settings at their defaults. Deploy your pod and SSH into it once it's up. You should land in `/workspace/`.
 
-On your remote machine, clone the repo onto local disk. All Python dependencies are already pre-installed in the image.
+On your remote machine, clone the repo onto local disk and sync the CUDA training environment with `uv`.
 
 ```bash
 cd /workspace
 git clone https://github.com/openai/parameter-golf.git
 cd parameter-golf
+uv sync --extra cuda
 ```
 
 Download our cached version of FineWeb. We'll use the 1024-token vocabulary for now.
 
 ```bash
-python3 data/cached_challenge_fineweb.py --variant sp1024
+uv run data/cached_challenge_fineweb.py --variant sp1024
 ```
 
 This defaults to the full validation split plus 80 training shards (8B tokens). If you only want a smaller subset while iterating, pass `--train-shards N`, for example `--train-shards 1`.
@@ -153,7 +153,7 @@ RUN_ID=baseline_sp1024 \
 DATA_PATH=./data/datasets/fineweb10B_sp1024/ \
 TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model \
 VOCAB_SIZE=1024 \
-torchrun --standalone --nproc_per_node=1 train_gpt.py
+uv run torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
 
 By default, `train_gpt.py` keeps its ~10 minute wallclock cap. If you want a longer run, override it explicitly, for example `MAX_WALLCLOCK_SECONDS=0`.
@@ -162,7 +162,7 @@ By default, this command prints `train_loss` step logs during training and print
 
 For dataset export, tokenizer export, and docs-cache rebuild instructions, see [data/README.md](data/README.md).
 
-Evaluation will be in the RunPod environment with all packages installed. `requirements.txt` is provided as a reference if you want to self-setup.
+Evaluation will be in the RunPod environment with all packages installed. The root `pyproject.toml` is the canonical dependency definition if you want to self-setup with `uv`; use `uv sync --extra cuda` for the PyTorch path and `uv sync --extra mlx` on Apple Silicon.
 
 ## FAQ
 
@@ -192,7 +192,7 @@ Since all submissions are public, we're accepting record submissions chronologic
 
 **Can I import XYZ package or library?**
 
-Yes, you're free to import any package or library you want, so long as it does not unjustly violate the rules on evaluation, compute, training time, code size or otherwise. Just include a requirements.txt in your records folder and mention setup instructions in your README.md. Since you don't pay for bits imported in Python libraries, limitations clearly apply: You can't sneak in extra compute, capabilities, or massively increase effective code size with custom libraries, but importing FlashAttention, etc. is completely fine.
+Yes, you're free to import any package or library you want, so long as it does not unjustly violate the rules on evaluation, compute, training time, code size or otherwise. Just include a `pyproject.toml` or `requirements.txt` in your records folder and mention setup instructions in your README.md. Since you don't pay for bits imported in Python libraries, limitations clearly apply: You can't sneak in extra compute, capabilities, or massively increase effective code size with custom libraries, but importing FlashAttention, etc. is completely fine.
 
 
 ## Submission Process

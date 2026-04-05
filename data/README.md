@@ -14,7 +14,7 @@ Canonical local layout:
 Download the cached FineWeb export for a tokenizer variant with:
 
 ```bash
-python3 data/cached_challenge_fineweb.py --variant sp1024
+uv run data/cached_challenge_fineweb.py --variant sp1024
 ```
 
 This populates `./data/datasets/fineweb10B_sp1024/` and `./data/tokenizers/`.
@@ -23,7 +23,7 @@ By default it downloads the full validation split and 8B training tokens (80 tra
 To fetch more training shards, pass `--train-shards`:
 
 ```bash
-python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 180
+uv run data/cached_challenge_fineweb.py --variant sp1024 --train-shards 180
 ```
 
 The downloader is manifest-driven and can fetch only a prefix of train shards from a larger published export. With the current shard size of `100_000_000` tokens, `10B` retokenized training tokens is `100` train shards:
@@ -31,7 +31,7 @@ The downloader is manifest-driven and can fetch only a prefix of train shards fr
 ```bash
 MATCHED_FINEWEB_REPO_ID=your-hf-username/your-dataset-repo \
 MATCHED_FINEWEB_REMOTE_ROOT_PREFIX=your_50B_export_root \
-python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 100
+uv run data/cached_challenge_fineweb.py --variant sp1024 --train-shards 100
 ```
 
 Validation is always downloaded in full from the fixed `fineweb_val_*` split. Training on the first `N` train shards means training on the prefix of the same frozen shuffled export, so the data order stays aligned with the baseline for that tokenizer family.
@@ -43,7 +43,7 @@ The default published repo is `willdepueoai/parameter-golf`, with the export roo
 To retrain a tokenizer or re-export shards from exactly the same selected documents, run the standalone retokenizer against the published docs cache:
 
 ```bash
-python3 data/download_hf_docs_and_tokenize.py \
+uv run data/download_hf_docs_and_tokenize.py \
   --repo-id your-hf-username/your-dataset-repo \
   --remote-root your_50B_export_root \
   --output-root /tmp/my_custom_tokenizer_export \
