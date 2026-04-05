@@ -26,6 +26,13 @@ The challenge runs from March 18th to April 30th.
 
 Happy training!
 
+## Local Experiment Results
+
+| Run | Score | Author | Summary | Date | Info |
+|-----|------:|--------|---------|------|------|
+| Iteration 1 | 1.3575 | ryanznie | Stacked baseline with partial RoPE, SmearGate, BigramHash, LeakyReLU squared, XSA, LN scale, and EMA-free export under the 16 MB limit | 2026-04-05 | [3d78388](https://github.com/ryanznie/parameter-golf/commit/3d78388) |
+| Iteration 2 | 1.4237 | ryanznie | EMA export run with slower throughput and oversized compressed artifact exceeding the 16 MB limit | 2026-04-05 | [a69f58c](https://github.com/ryanznie/parameter-golf/commit/a69f58c) |
+
 ## Leaderboard
 
 | Run | Score | Author | Summary | Date | Info |
