@@ -52,7 +52,7 @@ class Hyperparameters:
 
     # Training length.
     iterations = int(os.environ.get("ITERATIONS", 20000))
-    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 1200))
+    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
     train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 524_288))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 1024))
@@ -61,17 +61,22 @@ class Hyperparameters:
 
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
-    num_layers = int(os.environ.get("NUM_LAYERS", 9))
+    num_layers = int(os.environ.get("NUM_LAYERS", 11))
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     model_dim = int(os.environ.get("MODEL_DIM", 512))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
-    mlp_mult = int(os.environ.get("MLP_MULT", 2))
+    mlp_mult = int(os.environ.get("MLP_MULT", 3))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     rope_dims = int(os.environ.get("ROPE_DIMS", 16))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
-    bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
+    bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 4096))
     bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
+    xsa_last_n = int(os.environ.get("XSA_LAST_N", 4))
+    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
+    mlp_leak = float(os.environ.get("MLP_LEAK", 0.5))
+    ema_enabled = bool(int(os.environ.get("EMA_ENABLED", "1")))
+    ema_decay = float(os.environ.get("EMA_DECAY", 0.997))
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
@@ -596,6 +601,17 @@ class CausalSelfAttention(nn.Module):
         self.proj._zero_init = True
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
         self.rotary = Rotary(self.head_dim, base=rope_base, rope_dims=rope_dims)
+        self.use_xsa = False
+
+    def _xsa_efficient(self, y: Tensor, v: Tensor) -> Tensor:
+        # Remove the component aligned with the token's own value vector.
+        bsz, seqlen, num_heads, head_dim = y.shape
+        num_kv_heads = v.size(1)
+        group = num_heads // num_kv_heads
+        y_grouped = y.reshape(bsz, num_kv_heads, group, seqlen, head_dim)
+        v_norm = F.normalize(v, dim=-1).unsqueeze(2)
+        proj = (y_grouped * v_norm).sum(dim=-1, keepdim=True) * v_norm
+        return (y_grouped - proj).reshape(bsz, num_heads, seqlen, head_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         bsz, seqlen, dim = x.shape
@@ -616,21 +632,24 @@ class CausalSelfAttention(nn.Module):
             is_causal=True,
             enable_gqa=(self.num_kv_heads != self.num_heads),
         )
+        if self.use_xsa:
+            y = self._xsa_efficient(y, v)
         y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
         return self.proj(y)
 
 
 class MLP(nn.Module):
     # relu^2 MLP from the original modded-nanogpt setup
-    def __init__(self, dim: int, mlp_mult: int):
+    def __init__(self, dim: int, mlp_mult: int, leak: float):
         super().__init__()
         hidden = mlp_mult * dim
+        self.leak = leak
         self.fc = CastedLinear(dim, hidden, bias=False)
         self.proj = CastedLinear(hidden, dim, bias=False)
         self.proj._zero_init = True
 
     def forward(self, x: Tensor) -> Tensor:
-        x = torch.relu(self.fc(x))
+        x = F.leaky_relu(self.fc(x), negative_slope=self.leak)
         return self.proj(x.square())
 
 
@@ -685,22 +704,27 @@ class Block(nn.Module):
         rope_base: float,
         qk_gain_init: float,
         rope_dims: int,
+        layer_idx: int,
+        ln_scale: bool,
+        mlp_leak: float,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, rope_dims)
-        self.mlp = MLP(dim, mlp_mult)
+        self.mlp = MLP(dim, mlp_mult, mlp_leak)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
+        self.ln_scale_factor = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
 
     def forward(self, x: Tensor, x0: Tensor) -> Tensor:
         mix = self.resid_mix.to(dtype=x.dtype)
         x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.attn(self.attn_norm(x))
+        scaled = self.ln_scale_factor
+        attn_out = self.attn(self.attn_norm(x) * scaled)
         x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
-        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
+        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x) * scaled)
         return x
 
 
@@ -721,6 +745,9 @@ class GPT(nn.Module):
         rope_dims: int,
         bigram_vocab_size: int,
         bigram_dim: int,
+        xsa_last_n: int,
+        ln_scale: bool,
+        mlp_leak: float,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -745,10 +772,16 @@ class GPT(nn.Module):
                     rope_base,
                     qk_gain_init,
                     rope_dims,
+                    i,
+                    ln_scale,
+                    mlp_leak,
                 )
                 for i in range(num_layers)
             ]
         )
+        if xsa_last_n > 0:
+            for i in range(max(0, num_layers - xsa_last_n), num_layers):
+                self.blocks[i].attn.use_xsa = True
         self.final_norm = RMSNorm()
         self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
         if self.lm_head is not None:
@@ -758,9 +791,16 @@ class GPT(nn.Module):
     def _init_weights(self) -> None:
         if self.tie_embeddings:
             nn.init.normal_(self.tok_emb.weight, mean=0.0, std=self.tied_embed_init_std)
-        for module in self.modules():
-            if isinstance(module, nn.Linear) and getattr(module, "_zero_init", False):
-                nn.init.zeros_(module.weight)
+        num_layers = len(self.blocks)
+        for name, module in self.named_modules():
+            if isinstance(module, nn.Linear):
+                if getattr(module, "_zero_init", False):
+                    nn.init.zeros_(module.weight)
+                elif module.weight.ndim == 2 and module.weight.shape[0] >= 64 and module.weight.shape[1] >= 64:
+                    nn.init.orthogonal_(module.weight, gain=1.0)
+                    if ".proj" in name:
+                        with torch.no_grad():
+                            module.weight.mul_(1.0 / math.sqrt(2 * num_layers))
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)
@@ -906,6 +946,9 @@ def main() -> None:
         rope_dims=args.rope_dims,
         bigram_vocab_size=args.bigram_vocab_size,
         bigram_dim=args.bigram_dim,
+        xsa_last_n=args.xsa_last_n,
+        ln_scale=args.ln_scale,
+        mlp_leak=args.mlp_leak,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
@@ -978,7 +1021,8 @@ def main() -> None:
     log0(f"attention_mode:gqa num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads}")
     log0(
         f"rope_dims:{args.rope_dims if args.rope_dims > 0 else base_model.blocks[0].attn.head_dim} "
-        f"bigram_vocab_size:{args.bigram_vocab_size} bigram_dim:{args.bigram_dim}"
+        f"bigram_vocab_size:{args.bigram_vocab_size} bigram_dim:{args.bigram_dim} "
+        f"xsa_last_n:{args.xsa_last_n} ln_scale:{args.ln_scale} mlp_leak:{args.mlp_leak}"
     )
     log0(
         f"tie_embeddings:{args.tie_embeddings} embed_lr:{token_lr} "
@@ -1049,6 +1093,7 @@ def main() -> None:
 
     training_time_ms = 0.0
     stop_after_step: int | None = None
+    ema_state = {name: tensor.detach().float().clone() for name, tensor in base_model.state_dict().items()} if args.ema_enabled else None
     torch.cuda.synchronize()
     t0 = time.perf_counter()
 
@@ -1115,6 +1160,10 @@ def main() -> None:
         for opt in optimizers:
             opt.step()
         zero_grad_all()
+        if ema_state is not None:
+            with torch.no_grad():
+                for name, tensor in base_model.state_dict().items():
+                    ema_state[name].mul_(args.ema_decay).add_(tensor.detach().float(), alpha=1.0 - args.ema_decay)
 
         step += 1
         approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
@@ -1141,6 +1190,11 @@ def main() -> None:
         f"peak memory allocated: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB "
         f"reserved: {torch.cuda.max_memory_reserved() // 1024 // 1024} MiB"
     )
+    if ema_state is not None:
+        log0("ema:applying EMA weights")
+        current_state = base_model.state_dict()
+        avg_state = {name: tensor.to(dtype=current_state[name].dtype) for name, tensor in ema_state.items()}
+        base_model.load_state_dict(avg_state, strict=True)
 
     # -----------------------------
     # SERIALIZATION + ROUNDTRIP VALIDATION
