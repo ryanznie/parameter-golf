@@ -605,13 +605,13 @@ class CausalSelfAttention(nn.Module):
 
     def _xsa_efficient(self, y: Tensor, v: Tensor) -> Tensor:
         # Remove the component aligned with the token's own value vector.
-        bsz, seqlen, num_heads, head_dim = y.shape
+        bsz, num_heads, seqlen, head_dim = y.shape
         num_kv_heads = v.size(1)
         group = num_heads // num_kv_heads
-        y_grouped = y.reshape(bsz, num_kv_heads, group, seqlen, head_dim)
-        v_norm = F.normalize(v, dim=-1).unsqueeze(2)
+        y_grouped = y.transpose(1, 2).reshape(bsz, seqlen, num_kv_heads, group, head_dim)
+        v_norm = F.normalize(v.transpose(1, 2), dim=-1).unsqueeze(3)
         proj = (y_grouped * v_norm).sum(dim=-1, keepdim=True) * v_norm
-        return (y_grouped - proj).reshape(bsz, num_heads, seqlen, head_dim)
+        return (y_grouped - proj).reshape(bsz, seqlen, num_heads, head_dim).transpose(1, 2)
 
     def forward(self, x: Tensor) -> Tensor:
         bsz, seqlen, dim = x.shape
