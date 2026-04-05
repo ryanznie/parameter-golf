@@ -1472,7 +1472,7 @@ cuda = [
     { name = "torch" },
 ]
 mlx = [
-    { name = "mlx", marker = "sys_platform == 'darwin'" },
+    { name = "mlx", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" },
 ]
 
 [package.metadata]
@@ -1480,7 +1480,7 @@ requires-dist = [
     { name = "datasets" },
     { name = "huggingface-hub" },
     { name = "kernels", marker = "extra == 'cuda'" },
-    { name = "mlx", marker = "sys_platform == 'darwin' and extra == 'mlx'" },
+    { name = "mlx", marker = "sys_platform == 'darwin' and platform_machine == 'arm64' and extra == 'mlx'" },
     { name = "numpy" },
     { name = "sentencepiece" },
     { name = "setuptools" },

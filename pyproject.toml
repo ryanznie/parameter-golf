@@ -21,7 +21,7 @@ cuda = [
     "torch",
 ]
 mlx = [
-    "mlx; platform_system == 'Darwin'",
+    "mlx; platform_system == 'Darwin' and platform_machine == 'arm64'",
 ]
 
 [tool.uv]

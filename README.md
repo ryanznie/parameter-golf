@@ -91,7 +91,7 @@ cd parameter-golf
 uv sync --python "$(which python3)" --extra mlx
 ```
 
-On Apple Silicon, this forces `uv` to build the environment with your local arm64 interpreter instead of a cached x86_64 Python.
+On Apple Silicon, this forces `uv` to build the environment with your local arm64 interpreter instead of a cached x86_64 Python. On Intel Macs, the `mlx` extra now resolves to nothing, so `uv sync --extra mlx` will still succeed but `train_gpt_mlx.py` will not be usable there.
 
 Download our cached version of FineWeb with the 1024-token vocabulary:
 
