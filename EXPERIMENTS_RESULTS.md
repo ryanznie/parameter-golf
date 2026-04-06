@@ -2,8 +2,24 @@
 
 | Run | Score | Author | Summary | Date | Info |
 |---|---:|---|---|---|---|
+| Iteration 3 | TBD | ryanznie | WD04 + no-EMA + smaller BigramHash experiment targeting better post-quant quality and lower artifact size | 2026-04-05 | [73bf46f](https://github.com/ryanznie/parameter-golf/commit/73bf46f) |
 | Iteration 1 | 1.3575 | ryanznie | Stacked baseline with partial RoPE, SmearGate, BigramHash, LeakyReLU squared, XSA, LN scale, and EMA-free export under the 16 MB limit | 2026-04-05 | [3d78388](https://github.com/ryanznie/parameter-golf/commit/3d78388) |
 | Iteration 2 | 1.4237 | ryanznie | EMA export run with slower throughput and oversized compressed artifact exceeding the 16 MB limit | 2026-04-05 | [a69f58c](https://github.com/ryanznie/parameter-golf/commit/a69f58c) |
+
+## Iteration 3
+
+**Config**
+
+- Trainer: `train_gpt.py`
+- Status: queued / not yet logged in this file
+- Commit: `73bf46f`
+
+**Hypothesis**
+
+- Add decoupled weight decay with `MUON_WD=0.04` and `ADAM_WD=0.04`
+- Disable EMA export by default
+- Reduce `BIGRAM_VOCAB_SIZE` to `2048`
+- Target: improve post-quant score and reduce total compressed artifact size versus Iteration 2
 
 ## Iteration 1
 

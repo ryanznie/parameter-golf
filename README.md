@@ -14,6 +14,14 @@ Ideally, we'd allow for submissions to use arbitrary computational resources. Bu
 We also know compute is expensive, so **OpenAI is sponsoring $1,000,000 in compute credits** to help people get started training their models. To request a compute grant, use this form: [Request a Compute Grant](https://openai.com/index/parameter-golf/#credit-form).
 When requesting compute, please make sure you choose the appropriate level, write sufficient justification, and **submit with an email tied to a OpenAI / ChatGPT account**.
 
+## Local Experiment Results
+
+| Run | Score | Author | Summary | Date | Info |
+|-----|------:|--------|---------|------|------|
+| Iteration 3 | TBD | ryanznie | WD04 + no-EMA + smaller BigramHash experiment targeting better post-quant quality and lower artifact size | 2026-04-05 | [73bf46f](https://github.com/ryanznie/parameter-golf/commit/73bf46f) |
+| Iteration 1 | 1.3575 | ryanznie | Stacked baseline with partial RoPE, SmearGate, BigramHash, LeakyReLU squared, XSA, LN scale, and EMA-free export under the 16 MB limit | 2026-04-05 | [3d78388](https://github.com/ryanznie/parameter-golf/commit/3d78388) |
+| Iteration 2 | 1.4237 | ryanznie | EMA export run with slower throughput and oversized compressed artifact exceeding the 16 MB limit | 2026-04-05 | [a69f58c](https://github.com/ryanznie/parameter-golf/commit/a69f58c) |
+
 ## Participant Form
 
 If you enjoy solving very difficult technical problems, please introduce yourself via the [Challenge Participant Form](https://jobs.ashbyhq.com/openai/form/open-ai-challenge-parameter-golf). It helps us attribute challenge submissions and reach out about opportunities with OpenAI. _Completing the form is not required to participate._
@@ -25,13 +33,6 @@ In June, we plan to hire a small cohort of early-career researchers, targeting c
 The challenge runs from March 18th to April 30th. 
 
 Happy training!
-
-## Local Experiment Results
-
-| Run | Score | Author | Summary | Date | Info |
-|-----|------:|--------|---------|------|------|
-| Iteration 1 | 1.3575 | ryanznie | Stacked baseline with partial RoPE, SmearGate, BigramHash, LeakyReLU squared, XSA, LN scale, and EMA-free export under the 16 MB limit | 2026-04-05 | [3d78388](https://github.com/ryanznie/parameter-golf/commit/3d78388) |
-| Iteration 2 | 1.4237 | ryanznie | EMA export run with slower throughput and oversized compressed artifact exceeding the 16 MB limit | 2026-04-05 | [a69f58c](https://github.com/ryanznie/parameter-golf/commit/a69f58c) |
 
 ## Leaderboard
 
